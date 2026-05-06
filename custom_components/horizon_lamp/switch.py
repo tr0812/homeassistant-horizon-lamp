@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 from .const import (
     DOMAIN,
@@ -91,13 +93,21 @@ def time_sync(host, port):
     return send_command(cmd, host, port, "Time Sync")
 
 
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+    """设置开关实体"""
+    host = entry.data.get("host", DEFAULT_HOST)
+    port = entry.data.get("port", DEFAULT_PORT)
+    
+    switch = HorizonLampSwitch(host, port)
+    async_add_entities([switch], update_before_add=True)
+
+
 class HorizonLampSwitch(SwitchEntity):
     """鱼缸灯开关"""
 
     def __init__(self, host, port):
         self._host = host
         self._port = port
-        self._state = False  # 初始状态未知
         self._attr_is_on = False
 
     @property
