@@ -1,0 +1,9 @@
+# Home Assistant 配置示例
+# 将以下内容添加到 configuration.yaml
+
+# 积光鱼缸灯配置
+horizon_lamp:
+  host: 192.168.50.100    # 设备 IP 地址
+  port: 8855              # 设备端口（默认 8855）
+
+# 使用示例

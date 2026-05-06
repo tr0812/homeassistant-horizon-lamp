@@ -1,0 +1,18 @@
+{
+    "domain": "horizon_lamp",
+    "name": "积光鱼缸灯",
+    "doc_url": "https://github.com/tr0812/homeassistant-horizon-lamp",
+    "version": "1.0.0",
+    "issuestracker_url": "https://github.com/tr0812/homeassistant-horizon-lamp/issues",
+    "codeowners": [
+        "@tr0812"
+    ],
+    "dependencies": [],
+    "integration_type": "device",
+    "iot_class": "local_polling",
+    "config_flow": true,
+    "ssdp": [],
+    "zeroconf": [],
+    "dhcp": [],
+    "homekit": {}
+}
