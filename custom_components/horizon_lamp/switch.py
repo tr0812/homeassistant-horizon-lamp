@@ -149,11 +149,13 @@ class HorizonLampService:
         # 确认状态是否一致
         if confirmed_state == new_state:
             _LOGGER.info(f"[服务] 状态变化已确认: {'开启' if confirmed_state else '关闭'}")
-            self._current_state = confirmed_state
+            # current_state 已在轮询中更新，只需清除待确认状态并通知
             self._pending_state = None
             self._notify_subscribers(confirmed_state)
         else:
-            _LOGGER.info(f"[服务] 状态变化未确认 (实际: {'开启' if confirmed_state else '关闭'}), 取消推送")
+            _LOGGER.info(f"[服务] 状态变化未确认 (实际: {'开启' if confirmed_state else '关闭'}), 恢复状态")
+            # 恢复之前的当前状态
+            self._current_state = not new_state
             self._pending_state = None
         
         self._pending_confirm_task = None
@@ -178,6 +180,8 @@ class HorizonLampService:
                 # 状态变化时等待确认
                 if state != self._current_state:
                     _LOGGER.info(f"[服务] 检测到状态变化: {'开启' if state else '关闭'}, 开始确认...")
+                    # 立即更新 current_state，防止轮询再次触发
+                    self._current_state = state
                     self._pending_state = state
                     self._pending_confirm_task = asyncio.create_task(
                         self._confirm_state_change(state)
