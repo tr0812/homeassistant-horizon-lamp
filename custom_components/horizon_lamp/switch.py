@@ -198,33 +198,33 @@ class HorizonLampSwitch(SwitchEntity):
             self._attr_is_on = new_state
             self.async_write_ha_state()
 
-    async def async_turn_on(self, **kwargs):
+    def turn_on(self, **kwargs):
         """打开灯并同步时间"""
         self._is_controlling = True
         try:
             # 1. 先开灯（设备进入可通讯状态）
-            result = await self._hass.async_add_executor_job(power_on, self._host, self._port)
+            result = power_on(self._host, self._port)
             
             if result is not None:
                 self._attr_is_on = True
-                self.async_write_ha_state()
+                self.schedule_update_ha_state()
                 
                 # 2. 再同步时间
-                await self._hass.async_add_executor_job(time_sync, self._host, self._port)
+                time_sync(self._host, self._port)
             else:
                 _LOGGER.warning("开灯命令发送失败或设备无响应")
         finally:
             self._is_controlling = False
 
-    async def async_turn_off(self, **kwargs):
+    def turn_off(self, **kwargs):
         """关闭灯"""
         self._is_controlling = True
         try:
-            result = await self._hass.async_add_executor_job(power_off, self._host, self._port)
+            result = power_off(self._host, self._port)
             
             if result is not None:
                 self._attr_is_on = False
-                self.async_write_ha_state()
+                self.schedule_update_ha_state()
                 _LOGGER.info("关灯命令已发送")
             else:
                 _LOGGER.warning("关灯命令发送失败或设备无响应")
