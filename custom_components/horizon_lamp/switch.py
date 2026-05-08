@@ -17,7 +17,7 @@ Horizon Lamp Switch - 积光鱼缸灯 Home Assistant 集成
   - 使用 DISCOVER 命令 (0x00 类型)
   - 有响应 → 灯开着
   - 无响应 → 灯关闭
-  - 状态变化后等待5秒确认，确认成功后才推送通知
+  - 状态变化后等待3秒确认，确认成功后才推送通知
 """
 
 import asyncio
@@ -49,10 +49,10 @@ _DEBUG_MODE = True
 MAX_RETRIES = 3
 
 # 轮询间隔（秒）
-POLL_INTERVAL = 10
+POLL_INTERVAL = 5
 
 # 状态变化确认等待时间（秒）
-CONFIRM_WAIT_TIME = 5
+CONFIRM_WAIT_TIME = 3
 
 # 手动操作后忽略轮询通知的时间（秒）
 COOLDOWN_AFTER_MANUAL = 30
