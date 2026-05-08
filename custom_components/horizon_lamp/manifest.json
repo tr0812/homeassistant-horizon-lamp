@@ -2,7 +2,7 @@
     "domain": "horizon_lamp",
     "name": "积光鱼缸灯",
     "doc_url": "https://github.com/tr0812/homeassistant-horizon-lamp",
-    "version": "1.0.11",
+    "version": "1.0.12",
     "icon": "icon.png",
     "issuestracker_url": "https://github.com/tr0812/homeassistant-horizon-lamp/issues",
     "codeowners": [
