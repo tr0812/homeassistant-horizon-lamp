@@ -99,9 +99,12 @@ class HorizonLampService:
 
     def _notify_subscribers(self, state: bool) -> None:
         """通知所有订阅者状态变化"""
-        for callback in self._subscribers:
+        _LOGGER.info(f"[服务] _notify_subscribers 被调用, 状态={'开启' if state else '关闭'}, 订阅者数量={len(self._subscribers)}")
+        for i, callback in enumerate(self._subscribers):
+            _LOGGER.info(f"[服务] 正在调用订阅者 {i+1}/{len(self._subscribers)}")
             try:
                 callback(state)
+                _LOGGER.info(f"[服务] 订阅者 {i+1} 调用成功")
             except Exception as e:
                 _LOGGER.error(f"[服务] 通知订阅者失败: {e}")
 
@@ -129,7 +132,9 @@ class HorizonLampService:
 
     async def _poll_loop(self) -> None:
         """轮询循环"""
+        _LOGGER.info(f"[服务] 轮询循环开始, 轮询间隔={POLL_INTERVAL}秒, 确认次数={CONFIRM_COUNT}")
         while self._running:
+            _LOGGER.info("[服务] 开始新的轮询...")
             try:
                 # 在线程池中执行阻塞的网络操作
                 state = await self._hass.async_add_executor_job(
@@ -147,8 +152,9 @@ class HorizonLampService:
                 
                 # 连续检测达到阈值且状态与当前不一致，才认为真正变化
                 if self._consecutive_count >= CONFIRM_COUNT and state != self._current_state:
-                    _LOGGER.info(f"[服务] 状态变化已确认 (连续{self._consecutive_count}次): {'开启' if state else '关闭'}")
+                    _LOGGER.info(f"[服务] 状态变化已确认 (连续{self._consecutive_count}次): {'开启' if state else '关闭'}, 当前状态={self._current_state}")
                     self._current_state = state
+                    _LOGGER.info(f"[服务] 准备通知订阅者, 订阅者数量={len(self._subscribers)}")
                     self._notify_subscribers(state)
                 
             except Exception as e:
