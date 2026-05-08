@@ -267,7 +267,7 @@ class HorizonLampSwitch(SwitchEntity):
         if result is not None:
             # 命令发送成功，信任命令结果
             self._attr_is_on = False
-            self.schedule_update_ha_state()
+            self.async_write_ha_state()
             _LOGGER.info("[turn_off] 关灯成功")
         else:
             _LOGGER.warning("[turn_off] 关灯命令发送失败或设备无响应")
