@@ -49,7 +49,7 @@ _DEBUG_MODE = True
 MAX_RETRIES = 3
 
 # 轮询间隔（秒）
-POLL_INTERVAL = 5
+POLL_INTERVAL = 3
 
 # 确认连续次数（连续检测到相同状态的次数）
 CONFIRM_COUNT = 3
