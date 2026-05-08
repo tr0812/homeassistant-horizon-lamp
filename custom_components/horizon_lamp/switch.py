@@ -216,7 +216,7 @@ class HorizonLampSwitch(SwitchEntity):
                 _LOGGER.warning("开灯命令发送失败或设备无响应")
         finally:
             # 操作后等待 10 秒再允许轮询
-            self._hass.async_create_task(self._delayed_unblock(10))
+            self._hass.loop.call_later(10, self._delayed_unblock_callback)
 
     def turn_off(self, **kwargs):
         """关闭灯"""
@@ -232,13 +232,12 @@ class HorizonLampSwitch(SwitchEntity):
                 _LOGGER.warning("关灯命令发送失败或设备无响应")
         finally:
             # 操作后等待 10 秒再允许轮询
-            self._hass.async_create_task(self._delayed_unblock(10))
+            self._hass.loop.call_later(10, self._delayed_unblock_callback)
 
-    async def _delayed_unblock(self, delay: int):
-        """延迟解除控制状态，允许轮询"""
-        await asyncio.sleep(delay)
+    def _delayed_unblock_callback(self):
+        """延迟解除控制状态的回调"""
         self._is_controlling = False
-        _LOGGER.debug(f"控制状态已解除，轮询恢复")
+        _LOGGER.debug("控制状态已解除，轮询恢复")
     
     async def async_update(self):
         """实体更新时获取状态"""
