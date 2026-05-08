@@ -49,6 +49,9 @@ MAX_RETRIES = 3
 # 轮询间隔（秒）
 POLL_INTERVAL = 5
 
+# 手动操作后忽略轮询通知的时间（秒）
+COOLDOWN_AFTER_MANUAL = 30
+
 
 class HorizonLampService:
     """积光鱼缸灯服务 - 管理异步轮询任务"""
@@ -275,6 +278,7 @@ class HorizonLampSwitch(SwitchEntity):
         self._port = port
         self._service = service
         self._attr_is_on = False
+        self._last_manual_time: Optional[float] = None  # 上次手动操作时间
 
     @property
     def name(self):
@@ -307,6 +311,15 @@ class HorizonLampSwitch(SwitchEntity):
 
     def _on_state_changed(self, state: bool) -> None:
         """状态变化回调（从轮询服务调用）"""
+        # 检查冷却时间
+        import time
+        current_time = time.time()
+        if self._last_manual_time is not None:
+            elapsed = current_time - self._last_manual_time
+            if elapsed < COOLDOWN_AFTER_MANUAL:
+                _LOGGER.info(f"[实体] 忽略轮询通知 (冷却中, 剩余 {COOLDOWN_AFTER_MANUAL - elapsed:.1f}秒)")
+                return
+        
         _LOGGER.info(f"[实体] 收到状态变化通知: {'开启' if state else '关闭'}")
         self._attr_is_on = state
         self.async_write_ha_state()
@@ -314,6 +327,10 @@ class HorizonLampSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """打开灯（异步版本）"""
         _LOGGER.info(f"[turn_on] 开始开灯, 当前状态={self._attr_is_on}")
+        
+        # 记录手动操作时间
+        import time
+        self._last_manual_time = time.time()
         
         # 在线程池中执行网络操作
         result = await self._hass.async_add_executor_job(
@@ -336,6 +353,10 @@ class HorizonLampSwitch(SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         """关闭灯（异步版本）"""
         _LOGGER.info(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
+        
+        # 记录手动操作时间
+        import time
+        self._last_manual_time = time.time()
         
         # 在线程池中执行网络操作
         result = await self._hass.async_add_executor_job(
