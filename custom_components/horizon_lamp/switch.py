@@ -217,14 +217,14 @@ class HorizonLampSwitch(SwitchEntity):
             self.schedule_update_ha_state()
             # 2. 再同步时间
             time_sync(self._host, self._port)
-            _LOGGER.info("开灯成功，10秒后恢复轮询")
+            _LOGGER.info("开灯成功，60秒后恢复轮询")
         else:
             _LOGGER.warning("开灯命令发送失败或设备无响应")
             self._is_controlling = False
             return
         
-        # 10 秒后恢复轮询
-        self._hass.loop.call_later(10, self._unblock_polling)
+        # 60 秒后恢复轮询
+        self._hass.loop.call_later(60, self._unblock_polling)
 
     def turn_off(self, **kwargs):
         """关闭灯"""
@@ -241,14 +241,14 @@ class HorizonLampSwitch(SwitchEntity):
         if result is not None:
             self._attr_is_on = False
             self.schedule_update_ha_state()
-            _LOGGER.warning(f"[turn_off] 关灯成功，设置状态=off，10秒后恢复轮询")
+            _LOGGER.warning(f"[turn_off] 关灯成功，设置状态=off，60秒后恢复轮询")
         else:
             _LOGGER.warning("关灯命令发送失败或设备无响应")
             self._is_controlling = False
             return
         
-        # 10 秒后恢复轮询
-        self._hass.loop.call_later(10, self._unblock_polling)
+        # 60 秒后恢复轮询
+        self._hass.loop.call_later(60, self._unblock_polling)
 
     def _unblock_polling(self):
         """延迟解除控制状态，允许轮询"""
