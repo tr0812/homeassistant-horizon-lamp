@@ -13,6 +13,7 @@ MODEL = "鱼缸灯"
 COMMANDS = {
     "off": bytes.fromhex("ee0006010202011f19cc"),
     "on": bytes.fromhex("ee0006010202011e18cc"),
+    "discover": bytes.fromhex("ee0006000000000204cc"),  # 设备发现/状态检测
 }
 
 # 设备信息
