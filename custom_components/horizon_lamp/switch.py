@@ -190,7 +190,7 @@ class HorizonLampSwitch(SwitchEntity):
         if new_state != self._attr_is_on:
             _LOGGER.info(f"状态变化: {'开启' if new_state else '关闭'}")
             self._attr_is_on = new_state
-            self.schedule_update_ha_state()
+            self.async_write_ha_state()
 
     def turn_on(self, **kwargs):
         """打开灯并同步时间"""
@@ -199,7 +199,7 @@ class HorizonLampSwitch(SwitchEntity):
         
         if result is not None:
             self._attr_is_on = True
-            self.schedule_update_ha_state()
+            self.async_write_ha_state()
             
             # 2. 再同步时间
             time.sleep(0.5)  # 等待设备稳定
@@ -213,7 +213,7 @@ class HorizonLampSwitch(SwitchEntity):
         
         if result is not None:
             self._attr_is_on = False
-            self.schedule_update_ha_state()
+            self.async_write_ha_state()
         else:
             _LOGGER.warning("关灯命令发送失败或设备无响应")
     
