@@ -17,11 +17,13 @@ Horizon Lamp Switch - 积光鱼缸灯 Home Assistant 集成
   - 使用 DISCOVER 命令 (0x00 类型)
   - 有响应 → 灯开着
   - 无响应 → 灯关闭
+  - 状态变化后等待5秒确认，确认成功后才推送通知
 """
 
 import asyncio
 import socket
 import logging
+import time
 from datetime import datetime
 from typing import Callable, Optional
 
@@ -49,6 +51,9 @@ MAX_RETRIES = 3
 # 轮询间隔（秒）
 POLL_INTERVAL = 10
 
+# 状态变化确认等待时间（秒）
+CONFIRM_WAIT_TIME = 5
+
 # 手动操作后忽略轮询通知的时间（秒）
 COOLDOWN_AFTER_MANUAL = 30
 
@@ -66,6 +71,9 @@ class HorizonLampService:
         self._subscribers: list[Callable[[bool], None]] = []
         self._current_state: Optional[bool] = None
         self._running = False
+        # 状态变化确认相关
+        self._pending_state: Optional[bool] = None  # 待确认的状态
+        self._pending_confirm_task: Optional[asyncio.Task] = None  # 确认任务
 
     @classmethod
     def get_instance(cls, hass: HomeAssistant, host: str, port: int) -> 'HorizonLampService':
@@ -109,6 +117,16 @@ class HorizonLampService:
     async def stop(self) -> None:
         """停止轮询服务"""
         self._running = False
+        
+        # 取消待确认的任务
+        if self._pending_confirm_task:
+            self._pending_confirm_task.cancel()
+            try:
+                await self._pending_confirm_task
+            except asyncio.CancelledError:
+                pass
+            self._pending_confirm_task = None
+        
         if self._task:
             self._task.cancel()
             try:
@@ -117,6 +135,28 @@ class HorizonLampService:
                 pass
             self._task = None
         _LOGGER.info("[服务] 停止轮询服务")
+
+    async def _confirm_state_change(self, new_state: bool) -> None:
+        """确认状态变化"""
+        _LOGGER.info(f"[服务] 等待{CONFIRM_WAIT_TIME}秒确认状态变化...")
+        await asyncio.sleep(CONFIRM_WAIT_TIME)
+        
+        # 再次检测状态
+        confirmed_state = await self._hass.async_add_executor_job(
+            get_lamp_status, self._host, self._port
+        )
+        
+        # 确认状态是否一致
+        if confirmed_state == new_state:
+            _LOGGER.info(f"[服务] 状态变化已确认: {'开启' if confirmed_state else '关闭'}")
+            self._current_state = confirmed_state
+            self._pending_state = None
+            self._notify_subscribers(confirmed_state)
+        else:
+            _LOGGER.info(f"[服务] 状态变化未确认 (实际: {'开启' if confirmed_state else '关闭'}), 取消推送")
+            self._pending_state = None
+        
+        self._pending_confirm_task = None
 
     async def _poll_loop(self) -> None:
         """轮询循环"""
@@ -127,11 +167,22 @@ class HorizonLampService:
                     get_lamp_status, self._host, self._port
                 )
                 
-                # 状态变化时通知订阅者
-                if state != self._current_state:
-                    _LOGGER.info(f"[服务] 状态变化: {'开启' if state else '关闭'}")
-                    self._current_state = state
-                    self._notify_subscribers(state)
+                # 状态变化时等待确认
+                if state != self._current_state and self._pending_state is None:
+                    # 取消之前的确认任务（如果有）
+                    if self._pending_confirm_task:
+                        self._pending_confirm_task.cancel()
+                        try:
+                            await self._pending_confirm_task
+                        except asyncio.CancelledError:
+                            pass
+                        self._pending_confirm_task = None
+                    
+                    _LOGGER.info(f"[服务] 检测到状态变化: {'开启' if state else '关闭'}, 开始确认...")
+                    self._pending_state = state
+                    self._pending_confirm_task = asyncio.create_task(
+                        self._confirm_state_change(state)
+                    )
                 
             except Exception as e:
                 _LOGGER.error(f"[服务] 轮询错误: {e}")
@@ -182,7 +233,6 @@ def send_command(cmd_bytes, host, port, label=""):
                     _LOGGER.debug(f"RX: timeout, 重新发送...")
                 sock.close()
                 sock2.close()
-                import time
                 time.sleep(0.3)
                 continue
             else:
@@ -312,7 +362,6 @@ class HorizonLampSwitch(SwitchEntity):
     def _on_state_changed(self, state: bool) -> None:
         """状态变化回调（从轮询服务调用）"""
         # 检查冷却时间
-        import time
         current_time = time.time()
         if self._last_manual_time is not None:
             elapsed = current_time - self._last_manual_time
@@ -329,7 +378,6 @@ class HorizonLampSwitch(SwitchEntity):
         _LOGGER.info(f"[turn_on] 开始开灯, 当前状态={self._attr_is_on}")
         
         # 记录手动操作时间
-        import time
         self._last_manual_time = time.time()
         
         # 在线程池中执行网络操作
@@ -355,7 +403,6 @@ class HorizonLampSwitch(SwitchEntity):
         _LOGGER.info(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
         
         # 记录手动操作时间
-        import time
         self._last_manual_time = time.time()
         
         # 在线程池中执行网络操作
