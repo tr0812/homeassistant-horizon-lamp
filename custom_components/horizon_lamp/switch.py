@@ -242,6 +242,11 @@ class HorizonLampSwitch(SwitchEntity):
             self._attr_is_on = False
             self.schedule_update_ha_state()
             _LOGGER.warning(f"[turn_off] 关灯成功，设置状态=off，60秒后恢复轮询")
+            
+            # 立即更新状态，不等待轮询
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            _LOGGER.warning(f"[turn_off] 强制更新UI状态为关闭")
         else:
             _LOGGER.warning("关灯命令发送失败或设备无响应")
             self._is_controlling = False
