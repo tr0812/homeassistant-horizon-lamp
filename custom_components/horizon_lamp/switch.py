@@ -254,15 +254,17 @@ class HorizonLampSwitch(SwitchEntity):
         # 60 秒后恢复轮询
         self._hass.loop.call_later(60, lambda: self.start_polling(self._hass))
 
-    def turn_off(self, **kwargs):
-        """关闭灯"""
+    async def async_turn_off(self, **kwargs):
+        """关闭灯（异步版本）"""
         _LOGGER.info(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
         
         # 停止轮询
         self.stop_polling()
         
-        # 发送关灯命令
-        result = power_off(self._host, self._port)
+        # 在线程池中执行网络操作
+        result = await self._hass.async_add_executor_job(
+            power_off, self._host, self._port
+        )
         
         if result is not None:
             # 命令发送成功，信任命令结果
@@ -277,6 +279,11 @@ class HorizonLampSwitch(SwitchEntity):
         
         # 60 秒后恢复轮询
         self._hass.loop.call_later(60, lambda: self.start_polling(self._hass))
+
+    def turn_off(self, **kwargs):
+        """关闭灯（同步版本，兼容旧API）"""
+        # 直接调用异步版本
+        return self.async_turn_off(**kwargs)
     
     async def async_update(self):
         """实体更新时获取状态"""
