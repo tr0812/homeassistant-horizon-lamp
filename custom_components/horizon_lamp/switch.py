@@ -1,6 +1,24 @@
-"""Horizon Lamp 开关实体"""
+#!/usr/bin/env python3
+"""
+Horizon Lamp Switch - 积光鱼缸灯 Home Assistant 集成
+基于 horizon_control.py 重写
 
-import asyncio
+命令格式:
+  ON:       ee 00 06 01 02 02 01 1e 18 cc
+  OFF:      ee 00 06 01 02 02 01 1f 19 cc
+  DISCOVER: ee 00 06 00 00 00 02 04 cc (设备发现/状态检测)
+  TIME:     ee 00 0c 01 02 02 01 03 [YY] [MM] [DD] [HH] [MM] [SS] [CS] cc
+
+校验和算法:
+  ON/OFF/DISCOVER: CS = STATE ^ 0x01 (STATE 是命令字节的第7个字节)
+  TIME SYNC: CS = XOR(YY ^ MM ^ DD ^ HH ^ MM ^ SS) ^ 0x0f
+
+状态检测逻辑:
+  - 使用 DISCOVER 命令 (0x00 类型)
+  - 有响应 → 灯开着
+  - 无响应 → 灯关闭
+"""
+
 import socket
 import time
 import logging
@@ -9,8 +27,6 @@ from datetime import datetime
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval
-from datetime import timedelta
 
 from .const import (
     DOMAIN,
@@ -26,8 +42,8 @@ _LOGGER = logging.getLogger(__name__)
 # 调试开关
 _DEBUG_MODE = True
 
+# 命令重试次数
 MAX_RETRIES = 3
-UPDATE_INTERVAL = 30  # 状态轮询间隔（秒）
 
 
 def send_command(cmd_bytes, host, port, label=""):
@@ -37,8 +53,9 @@ def send_command(cmd_bytes, host, port, label=""):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         
         retry_info = f" (尝试 {attempt}/{MAX_RETRIES})" if attempt > 1 else ""
-        _LOGGER.debug(f"[{label}]{retry_info}")
-        _LOGGER.debug(f"  TX: {' '.join(f'{b:02x}' for b in cmd_bytes)}")
+        if _DEBUG_MODE:
+            _LOGGER.debug(f"[{label}]{retry_info}")
+            _LOGGER.debug(f"  TX: {' '.join(f'{b:02x}' for b in cmd_bytes)}")
         
         try:
             sock.sendto(cmd_bytes, (host, port))
@@ -55,19 +72,22 @@ def send_command(cmd_bytes, host, port, label=""):
         
         try:
             data, addr = sock2.recvfrom(256)
-            _LOGGER.debug(f"  RX: {' '.join(f'{b:02x}' for b in data)}")
+            if _DEBUG_MODE:
+                _LOGGER.debug(f"  RX: {' '.join(f'{b:02x}' for b in data)}")
             sock.close()
             sock2.close()
             return data
         except socket.timeout:
             if attempt < MAX_RETRIES:
-                _LOGGER.debug(f"RX: timeout, 重新发送...")
+                if _DEBUG_MODE:
+                    _LOGGER.debug(f"RX: timeout, 重新发送...")
                 sock.close()
                 sock2.close()
                 time.sleep(0.3)
                 continue
             else:
-                _LOGGER.warning(f"RX: timeout (设备无响应)")
+                if _DEBUG_MODE:
+                    _LOGGER.debug(f"RX: timeout (设备无响应)")
                 sock.close()
                 sock2.close()
                 return None
@@ -95,11 +115,21 @@ def get_lamp_status(host, port):
         sock.sendto(COMMANDS["discover"], (host, port))
         data, addr = sock.recvfrom(256)
         sock.close()
-        _LOGGER.debug(f"状态检测: 灯开着 (收到响应)")
+        
+        # 解析设备信息
+        if len(data) >= 14:
+            device_id = data[8:14].decode('ascii', errors='ignore').strip()
+            if _DEBUG_MODE:
+                _LOGGER.debug(f"状态检测: 灯开着 (收到响应, 设备ID: {device_id})")
+        else:
+            if _DEBUG_MODE:
+                _LOGGER.debug(f"状态检测: 灯开着 (收到响应)")
+        
         return True  # 有响应 = 灯开着
     except socket.timeout:
         sock.close()
-        _LOGGER.debug(f"状态检测: 灯关闭 (无响应)")
+        if _DEBUG_MODE:
+            _LOGGER.debug(f"状态检测: 灯关闭 (无响应)")
         return False  # 无响应 = 灯关闭
 
 
@@ -132,8 +162,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # 初始化时查询当前灯状态
     initial_state = await hass.async_add_executor_job(get_lamp_status, host, port)
     switch._attr_is_on = initial_state
-    # 使用延迟调用确保实体已添加到 HA
-    hass.async_create_task(switch.async_update())
     _LOGGER.info(f"初始化状态: {'开启' if initial_state else '关闭'}")
     
     # 启动定时轮询
@@ -150,6 +178,7 @@ class HorizonLampSwitch(SwitchEntity):
         self._attr_is_on = False
         self._unsub_poller = None
         self._is_controlling = False  # 用户正在操作中
+        self._update_interval = 30  # 状态轮询间隔（秒）
 
     @property
     def name(self):
@@ -169,13 +198,16 @@ class HorizonLampSwitch(SwitchEntity):
 
     def start_polling(self, hass):
         """启动定时轮询状态"""
+        from homeassistant.helpers.event import async_track_time_interval
+        from datetime import timedelta
+        
         if self._unsub_poller is None:
             self._unsub_poller = async_track_time_interval(
                 hass,
                 self._async_update_status,
-                timedelta(seconds=UPDATE_INTERVAL)
+                timedelta(seconds=self._update_interval)
             )
-            _LOGGER.info(f"启动状态轮询，间隔 {UPDATE_INTERVAL} 秒")
+            _LOGGER.info(f"启动状态轮询，间隔 {self._update_interval} 秒")
 
     def stop_polling(self):
         """停止定时轮询"""
@@ -186,11 +218,13 @@ class HorizonLampSwitch(SwitchEntity):
 
     async def _async_update_status(self, now=None):
         """定时更新状态回调"""
-        _LOGGER.warning(f"[_async_update_status] 被调用, is_controlling={self._is_controlling}")
+        if _DEBUG_MODE:
+            _LOGGER.debug(f"[_async_update_status] 被调用, is_controlling={self._is_controlling}")
         
         # 如果正在执行控制命令，跳过本次状态更新
         if self._is_controlling:
-            _LOGGER.warning("[_async_update_status] 正在控制中，跳过")
+            if _DEBUG_MODE:
+                _LOGGER.debug("[_async_update_status] 正在控制中，跳过")
             return
         
         # 在线程池中执行阻塞的网络操作
@@ -198,28 +232,32 @@ class HorizonLampSwitch(SwitchEntity):
             get_lamp_status, self._host, self._port
         )
         
-        _LOGGER.warning(f"[_async_update_status] 检测到状态={new_state}, 当前状态={self._attr_is_on}")
+        if _DEBUG_MODE:
+            _LOGGER.debug(f"[_async_update_status] 检测到状态={new_state}, 当前状态={self._attr_is_on}")
         
         # 状态变化时更新
         if new_state != self._attr_is_on:
-            _LOGGER.warning(f"[_async_update_status] 状态变化: {'开启' if new_state else '关闭'}")
+            _LOGGER.info(f"[_async_update_status] 状态变化: {'开启' if new_state else '关闭'}")
             self._attr_is_on = new_state
             self.async_write_ha_state()
 
     def turn_on(self, **kwargs):
         """打开灯并同步时间"""
         self._is_controlling = True
+        _LOGGER.info(f"[turn_on] 开始开灯, 当前状态={self._attr_is_on}")
+        
         # 1. 先开灯（设备进入可通讯状态）
         result = power_on(self._host, self._port)
         
         if result is not None:
             self._attr_is_on = True
             self.schedule_update_ha_state()
+            _LOGGER.info("[turn_on] 开灯成功")
+            
             # 2. 再同步时间
             time_sync(self._host, self._port)
-            _LOGGER.info("开灯成功，60秒后恢复轮询")
         else:
-            _LOGGER.warning("开灯命令发送失败或设备无响应")
+            _LOGGER.warning("[turn_on] 开灯命令发送失败或设备无响应")
             self._is_controlling = False
             return
         
@@ -228,27 +266,25 @@ class HorizonLampSwitch(SwitchEntity):
 
     def turn_off(self, **kwargs):
         """关闭灯"""
-        _LOGGER.warning(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
+        _LOGGER.info(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
         
         # 如果已经在关闭中，跳过
         if self._is_controlling:
-            _LOGGER.warning("[turn_off] 正在控制中，跳过")
+            _LOGGER.info("[turn_off] 正在控制中，跳过")
             return
         
         self._is_controlling = True
+        
+        # 多次尝试关灯以确保成功
         result = power_off(self._host, self._port)
         
         if result is not None:
+            # 命令发送成功，信任命令结果
             self._attr_is_on = False
             self.schedule_update_ha_state()
-            _LOGGER.warning(f"[turn_off] 关灯成功，设置状态=off，60秒后恢复轮询")
-            
-            # 立即更新状态，不等待轮询
-            self._attr_is_on = False
-            self.async_write_ha_state()
-            _LOGGER.warning(f"[turn_off] 强制更新UI状态为关闭")
+            _LOGGER.info("[turn_off] 关灯成功")
         else:
-            _LOGGER.warning("关灯命令发送失败或设备无响应")
+            _LOGGER.warning("[turn_off] 关灯命令发送失败或设备无响应")
             self._is_controlling = False
             return
         
@@ -258,7 +294,7 @@ class HorizonLampSwitch(SwitchEntity):
     def _unblock_polling(self):
         """延迟解除控制状态，允许轮询"""
         self._is_controlling = False
-        _LOGGER.warning(f"[_unblock_polling] 轮询恢复, 当前灯状态={self._attr_is_on}")
+        _LOGGER.info(f"[_unblock_polling] 轮询恢复, 当前灯状态={self._attr_is_on}")
     
     async def async_update(self):
         """实体更新时获取状态"""
