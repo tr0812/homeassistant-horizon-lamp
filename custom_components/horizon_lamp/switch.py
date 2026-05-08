@@ -253,7 +253,7 @@ class HorizonLampSwitch(SwitchEntity):
     def _unblock_polling(self):
         """延迟解除控制状态，允许轮询"""
         self._is_controlling = False
-        _LOGGER.info("轮询已恢复")
+        _LOGGER.warning(f"[_unblock_polling] 轮询恢复, 当前灯状态={self._attr_is_on}")
     
     async def async_update(self):
         """实体更新时获取状态"""
