@@ -17,7 +17,7 @@ Horizon Lamp Switch - 积光鱼缸灯 Home Assistant 集成
   - 使用 DISCOVER 命令 (0x00 类型)
   - 有响应 → 灯开着
   - 无响应 → 灯关闭
-  - 连续3次检测到相同状态才认为状态真正变化
+  - 连续2次检测到相同状态才认为状态真正变化
 """
 
 import asyncio
@@ -52,7 +52,7 @@ MAX_RETRIES = 3
 POLL_INTERVAL = 3
 
 # 确认连续次数（连续检测到相同状态的次数）
-CONFIRM_COUNT = 3
+CONFIRM_COUNT = 2
 
 # 手动操作后忽略轮询通知的时间（秒）
 COOLDOWN_AFTER_MANUAL = 30
