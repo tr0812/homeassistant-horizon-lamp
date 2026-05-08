@@ -167,17 +167,16 @@ class HorizonLampService:
                     get_lamp_status, self._host, self._port
                 )
                 
+                # 如果有待确认状态，只关注与待确认状态一致的情况
+                if self._pending_state is not None:
+                    if state == self._pending_state:
+                        _LOGGER.debug(f"[服务] 确认期间检测到状态一致: {'开启' if state else '关闭'}")
+                    else:
+                        _LOGGER.debug(f"[服务] 确认期间忽略检测结果 (等待确认: {'开启' if self._pending_state else '关闭'})")
+                    continue
+                
                 # 状态变化时等待确认
-                if state != self._current_state and self._pending_state is None:
-                    # 取消之前的确认任务（如果有）
-                    if self._pending_confirm_task:
-                        self._pending_confirm_task.cancel()
-                        try:
-                            await self._pending_confirm_task
-                        except asyncio.CancelledError:
-                            pass
-                        self._pending_confirm_task = None
-                    
+                if state != self._current_state:
                     _LOGGER.info(f"[服务] 检测到状态变化: {'开启' if state else '关闭'}, 开始确认...")
                     self._pending_state = state
                     self._pending_confirm_task = asyncio.create_task(
