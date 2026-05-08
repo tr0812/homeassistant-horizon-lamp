@@ -47,7 +47,7 @@ _DEBUG_MODE = True
 MAX_RETRIES = 3
 
 # 轮询间隔（秒）
-POLL_INTERVAL = 5
+POLL_INTERVAL = 10
 
 # 手动操作后忽略轮询通知的时间（秒）
 COOLDOWN_AFTER_MANUAL = 30
