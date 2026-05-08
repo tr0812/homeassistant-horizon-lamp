@@ -209,11 +209,13 @@ class HorizonLampSwitch(SwitchEntity):
 
     def turn_off(self, **kwargs):
         """关闭灯"""
+        # 关闭灯时，命令发送成功就认为关闭了
         result = power_off(self._host, self._port)
         
         if result is not None:
             self._attr_is_on = False
             self.async_write_ha_state()
+            _LOGGER.info("关灯命令已发送")
         else:
             _LOGGER.warning("关灯命令发送失败或设备无响应")
     
