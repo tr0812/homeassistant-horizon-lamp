@@ -145,6 +145,7 @@ class HorizonLampSwitch(SwitchEntity):
         self._port = port
         self._attr_is_on = False
         self._unsub_poller = None
+        self._is_controlling = False  # 用户正在操作中
 
     @property
     def name(self):
@@ -181,6 +182,11 @@ class HorizonLampSwitch(SwitchEntity):
 
     async def _async_update_status(self, now=None):
         """定时更新状态回调"""
+        # 如果正在执行控制命令，跳过本次状态更新
+        if self._is_controlling:
+            _LOGGER.debug("正在控制中，跳过本次状态更新")
+            return
+        
         # 在线程池中执行阻塞的网络操作
         new_state = await self._hass.async_add_executor_job(
             get_lamp_status, self._host, self._port
@@ -194,28 +200,36 @@ class HorizonLampSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         """打开灯并同步时间"""
-        # 1. 先开灯（设备进入可通讯状态）
-        result = await self._hass.async_add_executor_job(power_on, self._host, self._port)
-        
-        if result is not None:
-            self._attr_is_on = True
-            self.async_write_ha_state()
+        self._is_controlling = True
+        try:
+            # 1. 先开灯（设备进入可通讯状态）
+            result = await self._hass.async_add_executor_job(power_on, self._host, self._port)
             
-            # 2. 再同步时间
-            await self._hass.async_add_executor_job(time_sync, self._host, self._port)
-        else:
-            _LOGGER.warning("开灯命令发送失败或设备无响应")
+            if result is not None:
+                self._attr_is_on = True
+                self.async_write_ha_state()
+                
+                # 2. 再同步时间
+                await self._hass.async_add_executor_job(time_sync, self._host, self._port)
+            else:
+                _LOGGER.warning("开灯命令发送失败或设备无响应")
+        finally:
+            self._is_controlling = False
 
     async def async_turn_off(self, **kwargs):
         """关闭灯"""
-        result = await self._hass.async_add_executor_job(power_off, self._host, self._port)
-        
-        if result is not None:
-            self._attr_is_on = False
-            self.async_write_ha_state()
-            _LOGGER.info("关灯命令已发送")
-        else:
-            _LOGGER.warning("关灯命令发送失败或设备无响应")
+        self._is_controlling = True
+        try:
+            result = await self._hass.async_add_executor_job(power_off, self._host, self._port)
+            
+            if result is not None:
+                self._attr_is_on = False
+                self.async_write_ha_state()
+                _LOGGER.info("关灯命令已发送")
+            else:
+                _LOGGER.warning("关灯命令发送失败或设备无响应")
+        finally:
+            self._is_controlling = False
     
     async def async_update(self):
         """实体更新时获取状态"""
