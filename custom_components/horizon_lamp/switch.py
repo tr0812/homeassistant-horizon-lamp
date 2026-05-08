@@ -338,7 +338,8 @@ class HorizonLampSwitch(SwitchEntity):
         
         _LOGGER.info(f"[实体] 收到状态变化通知: {'开启' if state else '关闭'}")
         self._attr_is_on = state
-        self.async_write_ha_state()
+        # 在主线程中调度状态更新
+        self.hass.loop.call_soon_threadsafe(self.async_write_ha_state)
 
     async def async_turn_on(self, **kwargs) -> None:
         """打开灯（异步版本）"""
