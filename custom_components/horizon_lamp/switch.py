@@ -126,7 +126,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # 初始化时查询当前灯状态
     initial_state = await hass.async_add_executor_job(get_lamp_status, host, port)
     switch._attr_is_on = initial_state
-    switch.schedule_update_ha_state()
+    # 使用延迟调用确保实体已添加到 HA
+    hass.async_create_task(switch.async_update())
     _LOGGER.info(f"初始化状态: {'开启' if initial_state else '关闭'}")
     
     # 启动定时轮询
