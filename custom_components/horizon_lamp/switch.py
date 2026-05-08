@@ -17,7 +17,7 @@ Horizon Lamp Switch - 积光鱼缸灯 Home Assistant 集成
   - 使用 DISCOVER 命令 (0x00 类型)
   - 有响应 → 灯开着
   - 无响应 → 灯关闭
-  - 状态变化后等待3秒确认，确认成功后才推送通知
+  - 连续2次检测到相同状态才认为状态真正变化
 """
 
 import asyncio
@@ -51,8 +51,8 @@ MAX_RETRIES = 3
 # 轮询间隔（秒）
 POLL_INTERVAL = 5
 
-# 状态变化确认等待时间（秒）
-CONFIRM_WAIT_TIME = 3
+# 确认连续次数（连续检测到相同状态的次数）
+CONFIRM_COUNT = 2
 
 # 手动操作后忽略轮询通知的时间（秒）
 COOLDOWN_AFTER_MANUAL = 30
@@ -71,9 +71,9 @@ class HorizonLampService:
         self._subscribers: list[Callable[[bool], None]] = []
         self._current_state: Optional[bool] = None
         self._running = False
-        # 状态变化确认相关
-        self._pending_state: Optional[bool] = None  # 待确认的状态
-        self._pending_confirm_task: Optional[asyncio.Task] = None  # 确认任务
+        # 连续检测相关
+        self._last_detected_state: Optional[bool] = None  # 上次检测到的状态
+        self._consecutive_count = 0  # 连续检测计数
 
     @classmethod
     def get_instance(cls, hass: HomeAssistant, host: str, port: int) -> 'HorizonLampService':
@@ -118,15 +118,6 @@ class HorizonLampService:
         """停止轮询服务"""
         self._running = False
         
-        # 取消待确认的任务
-        if self._pending_confirm_task:
-            self._pending_confirm_task.cancel()
-            try:
-                await self._pending_confirm_task
-            except asyncio.CancelledError:
-                pass
-            self._pending_confirm_task = None
-        
         if self._task:
             self._task.cancel()
             try:
@@ -135,30 +126,6 @@ class HorizonLampService:
                 pass
             self._task = None
         _LOGGER.info("[服务] 停止轮询服务")
-
-    async def _confirm_state_change(self, new_state: bool) -> None:
-        """确认状态变化"""
-        _LOGGER.info(f"[服务] 等待{CONFIRM_WAIT_TIME}秒确认状态变化...")
-        await asyncio.sleep(CONFIRM_WAIT_TIME)
-        
-        # 再次检测状态
-        confirmed_state = await self._hass.async_add_executor_job(
-            get_lamp_status, self._host, self._port
-        )
-        
-        # 确认状态是否一致
-        if confirmed_state == new_state:
-            _LOGGER.info(f"[服务] 状态变化已确认: {'开启' if confirmed_state else '关闭'}")
-            # current_state 已在轮询中更新，只需清除待确认状态并通知
-            self._pending_state = None
-            self._notify_subscribers(confirmed_state)
-        else:
-            _LOGGER.info(f"[服务] 状态变化未确认 (实际: {'开启' if confirmed_state else '关闭'}), 恢复状态")
-            # 恢复之前的当前状态
-            self._current_state = not new_state
-            self._pending_state = None
-        
-        self._pending_confirm_task = None
 
     async def _poll_loop(self) -> None:
         """轮询循环"""
@@ -169,23 +136,20 @@ class HorizonLampService:
                     get_lamp_status, self._host, self._port
                 )
                 
-                # 如果有待确认状态，只关注与待确认状态一致的情况
-                if self._pending_state is not None:
-                    if state == self._pending_state:
-                        _LOGGER.debug(f"[服务] 确认期间检测到状态一致: {'开启' if state else '关闭'}")
-                    else:
-                        _LOGGER.debug(f"[服务] 确认期间忽略检测结果 (等待确认: {'开启' if self._pending_state else '关闭'})")
-                    continue
+                # 连续检测逻辑
+                if state == self._last_detected_state:
+                    # 状态相同，增加计数
+                    self._consecutive_count += 1
+                else:
+                    # 状态变化，重置计数
+                    self._consecutive_count = 1
+                    self._last_detected_state = state
                 
-                # 状态变化时等待确认
-                if state != self._current_state:
-                    _LOGGER.info(f"[服务] 检测到状态变化: {'开启' if state else '关闭'}, 开始确认...")
-                    # 立即更新 current_state，防止轮询再次触发
+                # 连续检测达到阈值且状态与当前不一致，才认为真正变化
+                if self._consecutive_count >= CONFIRM_COUNT and state != self._current_state:
+                    _LOGGER.info(f"[服务] 状态变化已确认 (连续{self._consecutive_count}次): {'开启' if state else '关闭'}")
                     self._current_state = state
-                    self._pending_state = state
-                    self._pending_confirm_task = asyncio.create_task(
-                        self._confirm_state_change(state)
-                    )
+                    self._notify_subscribers(state)
                 
             except Exception as e:
                 _LOGGER.error(f"[服务] 轮询错误: {e}")
