@@ -123,6 +123,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     switch = HorizonLampSwitch(hass, host, port)
     async_add_entities([switch], update_before_add=True)
     
+    # 初始化时查询当前灯状态
+    initial_state = await hass.async_add_executor_job(get_lamp_status, host, port)
+    switch._attr_is_on = initial_state
+    switch.schedule_update_ha_state()
+    _LOGGER.info(f"初始化状态: {'开启' if initial_state else '关闭'}")
+    
     # 启动定时轮询
     switch.start_polling(hass)
 
