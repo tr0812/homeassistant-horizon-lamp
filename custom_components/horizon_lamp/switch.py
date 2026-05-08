@@ -23,6 +23,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# 调试开关
+_DEBUG_MODE = True
+
 MAX_RETRIES = 3
 UPDATE_INTERVAL = 30  # 状态轮询间隔（秒）
 
@@ -183,9 +186,11 @@ class HorizonLampSwitch(SwitchEntity):
 
     async def _async_update_status(self, now=None):
         """定时更新状态回调"""
+        _LOGGER.warning(f"[_async_update_status] 被调用, is_controlling={self._is_controlling}")
+        
         # 如果正在执行控制命令，跳过本次状态更新
         if self._is_controlling:
-            _LOGGER.debug("正在控制中，跳过本次状态更新")
+            _LOGGER.warning("[_async_update_status] 正在控制中，跳过")
             return
         
         # 在线程池中执行阻塞的网络操作
@@ -193,9 +198,11 @@ class HorizonLampSwitch(SwitchEntity):
             get_lamp_status, self._host, self._port
         )
         
+        _LOGGER.warning(f"[_async_update_status] 检测到状态={new_state}, 当前状态={self._attr_is_on}")
+        
         # 状态变化时更新
         if new_state != self._attr_is_on:
-            _LOGGER.info(f"状态变化: {'开启' if new_state else '关闭'}")
+            _LOGGER.warning(f"[_async_update_status] 状态变化: {'开启' if new_state else '关闭'}")
             self._attr_is_on = new_state
             self.async_write_ha_state()
 
@@ -221,13 +228,20 @@ class HorizonLampSwitch(SwitchEntity):
 
     def turn_off(self, **kwargs):
         """关闭灯"""
+        _LOGGER.warning(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
+        
+        # 如果已经在关闭中，跳过
+        if self._is_controlling:
+            _LOGGER.warning("[turn_off] 正在控制中，跳过")
+            return
+        
         self._is_controlling = True
         result = power_off(self._host, self._port)
         
         if result is not None:
             self._attr_is_on = False
             self.schedule_update_ha_state()
-            _LOGGER.info("关灯成功，10秒后恢复轮询")
+            _LOGGER.warning(f"[turn_off] 关灯成功，设置状态=off，10秒后恢复轮询")
         else:
             _LOGGER.warning("关灯命令发送失败或设备无响应")
             self._is_controlling = False
