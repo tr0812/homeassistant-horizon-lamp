@@ -1,5 +1,6 @@
 """Horizon Lamp 开关实体"""
 
+import asyncio
 import socket
 import time
 import logging
@@ -214,7 +215,8 @@ class HorizonLampSwitch(SwitchEntity):
             else:
                 _LOGGER.warning("开灯命令发送失败或设备无响应")
         finally:
-            self._is_controlling = False
+            # 操作后等待 10 秒再允许轮询
+            self._hass.async_create_task(self._delayed_unblock(10))
 
     def turn_off(self, **kwargs):
         """关闭灯"""
@@ -229,7 +231,14 @@ class HorizonLampSwitch(SwitchEntity):
             else:
                 _LOGGER.warning("关灯命令发送失败或设备无响应")
         finally:
-            self._is_controlling = False
+            # 操作后等待 10 秒再允许轮询
+            self._hass.async_create_task(self._delayed_unblock(10))
+
+    async def _delayed_unblock(self, delay: int):
+        """延迟解除控制状态，允许轮询"""
+        await asyncio.sleep(delay)
+        self._is_controlling = False
+        _LOGGER.debug(f"控制状态已解除，轮询恢复")
     
     async def async_update(self):
         """实体更新时获取状态"""
