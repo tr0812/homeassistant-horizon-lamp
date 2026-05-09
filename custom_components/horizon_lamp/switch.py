@@ -351,48 +351,64 @@ class HorizonLampSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """打开灯（异步版本）"""
-        _LOGGER.info(f"[turn_on] 开始开灯, 当前状态={self._attr_is_on}")
+        _LOGGER.info(f"[turn_on] ========== 开始开灯 ==========")
+        _LOGGER.info(f"[turn_on] 当前状态={self._attr_is_on}, host={self._host}, port={self._port}")
         
         # 记录手动操作时间
         self._last_manual_time = time.time()
+        _LOGGER.info(f"[turn_on] 已记录手动操作时间")
         
         # 在线程池中执行网络操作
+        _LOGGER.info(f"[turn_on] 正在发送开灯命令...")
         result = await self._hass.async_add_executor_job(
             power_on, self._host, self._port
         )
         
+        _LOGGER.info(f"[turn_on] 命令发送完成, result={result is not None}")
+        
         if result is not None:
             # 命令发送成功，立即更新状态
             self._attr_is_on = True
+            _LOGGER.info(f"[turn_on] 更新状态为 True, 调用 async_write_ha_state")
             self.async_write_ha_state()
             _LOGGER.info("[turn_on] 开灯成功")
             
             # 同步时间
+            _LOGGER.info("[turn_on] 正在同步时间...")
             await self._hass.async_add_executor_job(
                 time_sync, self._host, self._port
             )
+            _LOGGER.info("[turn_on] 时间同步完成")
         else:
             _LOGGER.warning("[turn_on] 开灯命令发送失败或设备无响应")
+        _LOGGER.info(f"[turn_on] ========== 开灯完成 ==========")
 
     async def async_turn_off(self, **kwargs) -> None:
         """关闭灯（异步版本）"""
-        _LOGGER.info(f"[turn_off] 开始关灯, 当前状态={self._attr_is_on}")
+        _LOGGER.info(f"[turn_off] ========== 开始关灯 ==========")
+        _LOGGER.info(f"[turn_off] 当前状态={self._attr_is_on}, host={self._host}, port={self._port}")
         
         # 记录手动操作时间
         self._last_manual_time = time.time()
+        _LOGGER.info(f"[turn_off] 已记录手动操作时间")
         
         # 在线程池中执行网络操作
+        _LOGGER.info(f"[turn_off] 正在发送关灯命令...")
         result = await self._hass.async_add_executor_job(
             power_off, self._host, self._port
         )
         
+        _LOGGER.info(f"[turn_off] 命令发送完成, result={result is not None}")
+        
         if result is not None:
             # 命令发送成功，立即更新状态
             self._attr_is_on = False
+            _LOGGER.info(f"[turn_off] 更新状态为 False, 调用 async_write_ha_state")
             self.async_write_ha_state()
             _LOGGER.info("[turn_off] 关灯成功")
         else:
             _LOGGER.warning("[turn_off] 关灯命令发送失败或设备无响应")
+        _LOGGER.info(f"[turn_off] ========== 关灯完成 ==========")
 
     # 同步版本的 turn_on/turn_off 供兼容性使用
     def turn_on(self, **kwargs) -> None:
