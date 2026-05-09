@@ -30,6 +30,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # 设置平台
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
+    _LOGGER.info(f"积光鱼缸灯设置完成, 平台={PLATFORMS}")
+    
     return True
 
 

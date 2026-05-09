@@ -137,9 +137,11 @@ class HorizonLampService:
             _LOGGER.info("[服务] 开始新的轮询...")
             try:
                 # 在线程池中执行阻塞的网络操作
+                _LOGGER.info(f"[服务] 正在检测灯状态... host={self._host}, port={self._port}")
                 state = await self._hass.async_add_executor_job(
                     get_lamp_status, self._host, self._port
                 )
+                _LOGGER.info(f"[服务] 检测完成, 状态={state}, 上次状态={self._last_detected_state}, 当前状态={self._current_state}")
                 
                 # 连续检测逻辑
                 if state == self._last_detected_state:
