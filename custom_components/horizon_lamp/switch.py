@@ -41,6 +41,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.DEBUG)
 
 # 调试开关
 _DEBUG_MODE = True
